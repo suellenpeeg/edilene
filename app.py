@@ -89,7 +89,7 @@ def get_db_connection():
         client = gspread.authorize(credentials)
         
         # Abre a planilha
-        sheet = client.open("db_edilene")
+        sheet = client.open_by_key("19FiUFG7daZKCTMZ8vtDO23BPCPfnhpMaQ6UfD0KIhb0")
         return sheet
         
     except gspread.exceptions.SpreadsheetNotFound:
