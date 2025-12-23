@@ -5,7 +5,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import uuid
 
-# --- 1. CONFIGURAÇÃO ESTÉTICA ---
+# --- CONFIGURAÇÃO ESTÉTICA ---
 st.set_page_config(page_title="Edilene Epilação", page_icon="🌸", layout="wide")
 
 st.markdown("""
@@ -17,7 +17,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. CONEXÃO ---
+# --- CONEXÃO ---
 def get_db_connection():
     try:
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -59,7 +59,7 @@ def update_config(dia, status, abre, fecha):
             return True
         except: return False
 
-# --- 3. LÓGICA DE FILTRO ---
+# --- LÓGICA DE FILTRO ---
 def check_availability(date_obj, duration_min):
     date_str = str(date_obj)
     df_ag = load_data("agendamentos")
@@ -72,8 +72,10 @@ def check_availability(date_obj, duration_min):
     if conf.empty or conf.iloc[0]['status'] == 'Fechado': return []
     
     h_abre, h_fecha = conf.iloc[0]['abertura'], conf.iloc[0]['fechamento']
-    start_work = datetime.strptime(f"{date_str} {h_abre}", "%Y-%m-%d %H:%M")
-    end_work = datetime.strptime(f"{date_str} {h_fecha}", "%Y-%m-%d %H:%M")
+    try:
+        start_work = datetime.strptime(f"{date_str} {h_abre}", "%Y-%m-%d %H:%M")
+        end_work = datetime.strptime(f"{date_str} {h_fecha}", "%Y-%m-%d %H:%M")
+    except: return []
     
     slots = []
     curr = start_work
@@ -97,41 +99,60 @@ def check_availability(date_obj, duration_min):
         curr += timedelta(minutes=30)
     return slots
 
-# --- 4. INTERFACE GESTOR ---
+# --- INTERFACE GESTOR ---
 def admin_dashboard():
     st.sidebar.title("Painel Administrativo")
-    aba = st.sidebar.radio("Navegação", ["📅 Agenda", "⚙️ Configurar Escala", "🚫 Bloquear Horário", "💰 Financeiro"])
+    aba = st.sidebar.radio("Navegação", ["📅 Agenda", "⚙️ Gestão de Horários", "🛠️ Serviços", "💰 Financeiro"])
     
-    if aba == "⚙️ Configurar Escala":
-        st.header("Configurar Dias de Funcionamento")
-        df_conf = load_data("configuracoes")
-        if not df_conf.empty:
-            for _, row in df_conf.iterrows():
-                with st.expander(f"Editar {row['dia']}"):
-                    new_status = st.selectbox("Status", ["Aberto", "Fechado"], index=0 if row['status']=="Aberto" else 1, key=f"s_{row['dia']}")
-                    c1, c2 = st.columns(2)
-                    new_abre = c1.text_input("Abertura (HH:MM)", value=row['abertura'], key=f"a_{row['dia']}")
-                    new_fecha = c2.text_input("Fechamento (HH:MM)", value=row['fechamento'], key=f"f_{row['dia']}")
-                    if st.button("Salvar Alteração", key=f"btn_{row['dia']}"):
-                        if update_config(row['dia'], new_status, new_abre, new_fecha):
-                            st.success("Configuração atualizada!"); st.rerun()
+    if aba == "⚙️ Gestão de Horários":
+        st.header("⚙️ Configurar Escala e Bloqueios")
+        
+        tab_escala, tab_bloqueio = st.tabs(["🕒 Escala Semanal", "🚫 Bloquear Horário Específico"])
+        
+        with tab_escala:
+            st.subheader("Definir Dias e Horários de Funcionamento")
+            df_conf = load_data("configuracoes")
+            if not df_conf.empty:
+                for _, row in df_conf.iterrows():
+                    with st.expander(f"📍 {row['dia']}"):
+                        new_status = st.selectbox("Status", ["Aberto", "Fechado"], index=0 if row['status']=="Aberto" else 1, key=f"s_{row['dia']}")
+                        c1, c2 = st.columns(2)
+                        new_abre = c1.text_input("Abertura (00:00)", value=row['abertura'], key=f"a_{row['dia']}")
+                        new_fecha = c2.text_input("Fechamento (00:00)", value=row['fechamento'], key=f"f_{row['dia']}")
+                        if st.button("Atualizar " + row['dia'], key=f"btn_{row['dia']}"):
+                            if update_config(row['dia'], new_status, new_abre, new_fecha):
+                                st.success("Escala de " + row['dia'] + " atualizada!"); st.rerun()
+            else:
+                st.error("Aba 'configuracoes' não encontrada ou vazia na planilha.")
+
+        with tab_bloqueio:
+            st.subheader("Bloquear um Horário no Dia")
+            with st.form("f_bloq"):
+                d_b = st.date_input("Data do Bloqueio", min_value=date.today())
+                h_i = st.time_input("Início"); h_f = st.time_input("Fim")
+                motivo = st.text_input("Motivo (ex: Almoço)")
+                if st.form_submit_button("Confirmar Bloqueio"):
+                    save_row("agendamentos", [str(uuid.uuid4()), f"BLOQUEIO: {motivo}", "00", "Pausa", str(d_b), h_i.strftime("%H:%M:%S"), h_f.strftime("%H:%M:%S"), 0, "Bloqueado"])
+                    st.success("Bloqueado com sucesso!")
 
     elif aba == "📅 Agenda":
-        st.header("Agenda de Atendimentos")
+        st.header("Atendimentos")
         sel_d = st.date_input("Data:", date.today())
         df = load_data("agendamentos")
         if not df.empty:
             dia = df[df['data'] == str(sel_d)].sort_values('hora_inicio')
             st.dataframe(dia[['hora_inicio', 'cliente_nome', 'servico', 'status']], use_container_width=True)
 
-    elif aba == "🚫 Bloquear Horário":
-        st.header("Bloqueio Manual")
-        with st.form("f_bloq"):
-            d_b = st.date_input("Data", min_value=date.today())
-            hi = st.time_input("Início"); hf = st.time_input("Fim")
-            if st.form_submit_button("Bloquear"):
-                save_row("agendamentos", [str(uuid.uuid4()), "BLOQUEIO", "00", "Pausa", str(d_b), hi.strftime("%H:%M:%S"), hf.strftime("%H:%M:%S"), 0, "Bloqueado"])
-                st.success("Bloqueado!")
+    elif aba == "🛠️ Serviços":
+        st.header("Serviços")
+        df_servs = load_data("servicos")
+        st.dataframe(df_servs, use_container_width=True)
+        with st.form("novo_s"):
+            n = st.text_input("Serviço")
+            d = st.number_input("Duração (min)", 15, 120, 30)
+            v = st.number_input("Preço", 0.0)
+            if st.form_submit_button("Adicionar"):
+                save_row("servicos", [n, d, v]); st.rerun()
 
     elif aba == "💰 Financeiro":
         st.header("Financeiro")
@@ -139,41 +160,41 @@ def admin_dashboard():
         if not df.empty:
             vendas = df[df['status'] == 'Agendado'].copy()
             vendas['valor'] = pd.to_numeric(vendas['valor'], errors='coerce').fillna(0)
-            st.metric("Total de Ganhos", f"R$ {vendas['valor'].sum():,.2f}")
+            st.metric("Faturamento", f"R$ {vendas['valor'].sum():,.2f}")
             st.dataframe(vendas[['data', 'cliente_nome', 'servico', 'valor']], use_container_width=True)
 
-    if st.sidebar.button("Sair"):
-        st.session_state['user'] = None; st.rerun()
-
-# --- 5. INTERFACE CLIENTE ---
-def client_dashboard():
-    st.sidebar.title(f"Olá, {st.session_state['user']['name']}")
     if st.sidebar.button("Sair/Logout"):
         st.session_state['user'] = None; st.rerun()
 
-    tab1, tab2 = st.tabs(["✨ Novo Agendamento", "📅 Meus Agendamentos"])
+# --- INTERFACE CLIENTE ---
+def client_dashboard():
+    st.sidebar.title(f"🌸 {st.session_state['user']['name']}")
+    if st.sidebar.button("Sair/Logout"):
+        st.session_state['user'] = None; st.rerun()
+
+    tab_marcar, tab_meus = st.tabs(["✨ Marcar Horário", "📅 Meus Agendamentos"])
     
-    with tab1:
+    with tab_marcar:
         df_s = load_data("servicos")
         if not df_s.empty:
-            serv = st.selectbox("Selecione o serviço", df_s['nome'].tolist())
+            serv = st.selectbox("O que deseja fazer?", df_s['nome'].tolist())
             row_s = df_s[df_s['nome'] == serv].iloc[0]
-            data_sel = st.date_input("Data desejada", min_value=date.today())
+            data_sel = st.date_input("Data", min_value=date.today())
             slots = check_availability(data_sel, int(row_s['duracao_min']))
             if slots:
-                hora = st.selectbox("Horários disponíveis", slots)
+                hora = st.selectbox("Horários", slots)
                 if st.button("Confirmar Agendamento"):
                     hf = (datetime.strptime(hora, "%H:%M") + timedelta(minutes=int(row_s['duracao_min']))).strftime("%H:%M:%S")
                     save_row("agendamentos", [str(uuid.uuid4()), st.session_state['user']['name'], st.session_state['user']['phone'], serv, str(data_sel), hora+":00", hf, row_s['valor'], "Agendado"])
-                    st.success("Agendamento realizado!"); st.balloons()
-            else: st.error("Não atendemos nesta data ou os horários estão esgotados.")
+                    st.success("Agendado!"); st.balloons()
+            else: st.error("Agenda indisponível para este dia.")
+        else: st.warning("Nenhum serviço cadastrado.")
 
-    with tab2:
-        st.subheader("Seus horários marcados")
+    with tab_meus:
         df_ag = load_data("agendamentos")
         if not df_ag.empty:
             meus = df_ag[df_ag['cliente_tel'].astype(str) == st.session_state['user']['phone']]
-            if meus.empty: st.info("Você ainda não possui agendamentos.")
+            if meus.empty: st.info("Sem agendamentos.")
             else: st.dataframe(meus[['data', 'hora_inicio', 'servico', 'status']], use_container_width=True, hide_index=True)
 
 # --- LOGIN ---
@@ -181,9 +202,9 @@ def login_page():
     st.markdown("<h1 style='text-align: center;'>🌸 Edilene Epilação</h1>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
-        t1, t2 = st.tabs(["Cliente", "Gestora"])
+        t1, t2 = st.tabs(["Sou Cliente", "Sou Gestora"])
         with t1:
-            p = st.text_input("Telefone (apenas números)")
+            p = st.text_input("Seu Telefone")
             if p:
                 cp = ''.join(filter(str.isdigit, p))
                 df = load_data("clientes")
@@ -192,13 +213,13 @@ def login_page():
                     if st.button("Entrar"):
                         st.session_state['user'] = {'role':'client', 'name': found.iloc[0]['nome'], 'phone': cp}; st.rerun()
                 else:
-                    n = st.text_input("Seu nome para cadastro")
+                    n = st.text_input("Nome para cadastro")
                     if st.button("Cadastrar"):
                         save_row("clientes", [n, cp])
                         st.session_state['user'] = {'role':'client', 'name': n, 'phone': cp}; st.rerun()
         with t2:
             u = st.text_input("Usuário"); ps = st.text_input("Senha", type="password")
-            if st.button("Acesso Gestão"):
+            if st.button("Entrar como Gestora"):
                 if u == "Edilene" and ps == "senha123":
                     st.session_state['user'] = {'role':'admin', 'name':'Edilene'}; st.rerun()
 
