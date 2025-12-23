@@ -30,7 +30,7 @@ def get_db_connection():
         credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(credentials)
         # ID DA SUA PLANILHA - Verifique se este ID está 100% correto
-        PLANILHA_ID = "19FiUFG7daZKCTMZ8vtD023BPCPfnhpMaQ6UfD0KIhb0"
+        PLANILHA_ID = "19FiUFG7daZKCTMZ8vtDO23BPCPfnhpMaQ6UfD0KIhb0"
         return client.open_by_key(PLANILHA_ID)
     except Exception as e:
         st.error(f"Erro de Conexão: {e}")
