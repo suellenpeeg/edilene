@@ -26,7 +26,7 @@ def get_db_connection():
         credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(credentials)
         # ID exato da sua planilha para evitar erro 404
-        return client.open_by_key("19FiUFG7daZKCTMZ8vtD023BPCPfnhpMaQ6UfD0KIhb0")
+        return client.open_by_key("19FiUFG7daZKCTMZ8vtDO23BPCPfnhpMaQ6UfD0KIhb0")
     except Exception as e:
         st.error(f"Erro de Conexão: {e}")
         return None
